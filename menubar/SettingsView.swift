@@ -22,6 +22,10 @@ struct SettingsView: View {
     @State private var testResult: TestResult?
     @State private var isTesting = false
     @State private var accessibilityTrusted = LockScreenAccessibility.isTrusted
+    @AppStorage(LockScreenUnlockCoordinator.triggerKeyDefaultsKey)
+    private var triggerKey = LockScreenUnlockCoordinator.defaultTriggerUsage
+    @AppStorage(LockScreenUnlockCoordinator.armTimeoutDefaultsKey)
+    private var armTimeout = LockScreenUnlockCoordinator.defaultArmTimeout
     // Listé une fois : brancher un iPhone pendant que la fenêtre est ouverte est rare,
     // et ré-interroger AVFoundation à chaque rendu réveillerait le téléphone.
     @State private var cameras = Cameras.list()
@@ -247,6 +251,22 @@ struct SettingsView: View {
             }
             Text(L("set.lockscreen.desc"))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
+            if lockConfigured {
+                Picker(L("set.lockscreen.triggerkey"), selection: $triggerKey) {
+                    ForEach(LockScreenUnlockCoordinator.triggerKeys, id: \.usage) { Text($0.name).tag($0.usage) }
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(L("set.lockscreen.timeout"))
+                        Spacer()
+                        Text(Self.durationLabel(armTimeout)).foregroundStyle(.secondary)
+                    }
+                    Slider(value: $armTimeout, in: LockScreenUnlockCoordinator.armTimeoutRange, step: 60)
+                        .tint(Brand.green)
+                }
+                Text(L("set.lockscreen.trigger.desc"))
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
             if lockConfigured && !accessibilityTrusted {
                 Button(action: openAccessibilitySettings) {
                     Label(L("set.lockscreen.accessibility.short"), systemImage: "hand.raised.fill")
@@ -254,6 +274,13 @@ struct SettingsView: View {
                 .buttonStyle(.link).tint(.orange)
             }
         }
+    }
+
+    private static func durationLabel(_ seconds: Double) -> String {
+        let minutes = Int((seconds / 60).rounded())
+        let (h, m) = (minutes / 60, minutes % 60)
+        if h == 0 { return "\(m) min" }
+        return m == 0 ? "\(h) h" : "\(h) h \(m) min"
     }
 
     private var lockScreenStatus: String {

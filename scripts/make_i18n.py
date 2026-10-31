@@ -385,6 +385,16 @@ TR = {
         "en": "Mugshot types your saved password after recognizing you. Unavailable for FileVault and after a restart.",
         "fr": "Mugshot saisit votre mot de passe après vous avoir reconnu. Indisponible pour FileVault et après un redémarrage.",
     },
+    "set.lockscreen.triggerkey": {
+        "en": "Unlock key", "fr": "Touche de déverrouillage",
+    },
+    "set.lockscreen.timeout": {
+        "en": "Unlock window after locking", "fr": "Délai pour déverrouiller après le verrouillage",
+    },
+    "set.lockscreen.trigger.desc": {
+        "en": "On the lock screen, press this key once to unlock with your face. Any other key cancels it until the next lock. Keep your choice private.",
+        "fr": "Sur l’écran verrouillé, appuyez une fois sur cette touche pour déverrouiller par le visage. Toute autre touche l’annule jusqu’au prochain verrouillage. Gardez votre choix privé.",
+    },
     "set.lockscreen.accessibility": {
         "en": "Allow Mugshot in Accessibility settings", "fr": "Autoriser Mugshot dans les réglages Accessibilité",
     },

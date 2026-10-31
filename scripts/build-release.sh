@@ -37,7 +37,7 @@ echo "Signature avec : $DEV_ID"
 "$HERE/.venv/bin/python" -m pip install -r "$HERE/requirements-build.txt" --quiet
 
 echo "══ 1  Assemblage de l'app autonome ══"
-LOCAL_SIGN_IDENTITY="$DEV_ID" MUGSHOT_ALLOW_DEVELOPMENT_MIGRATION=1 bash scripts/build-standalone.sh
+LOCAL_SIGN_IDENTITY="$DEV_ID" MUGSHOT_ALLOW_DEVELOPMENT_MIGRATION=1 MUGSHOT_UPDATE_CHECKS=true bash scripts/build-standalone.sh
 
 echo "══ 2  Signature inside-out (Developer ID + hardened runtime) ══"
 # a) TOUS les Mach-O empaquetés par PyInstaller (dylibs, .so, binaire du

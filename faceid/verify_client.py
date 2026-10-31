@@ -16,7 +16,7 @@ def command_for_args(args):
 def main():
     lock_mode = "--lock" in sys.argv[1:]
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout((config.LOCK_TIMEOUT_S if lock_mode else config.VERIFY_TIMEOUT_S) + 1)
+    s.settimeout((config.lock_timeout() if lock_mode else config.VERIFY_TIMEOUT_S) + 1)
     try:
         s.connect(str(config.SOCKET_PATH))
         s.sendall(command_for_args(sys.argv[1:]))

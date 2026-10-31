@@ -59,6 +59,20 @@ class FaceEngine:
         return float(np.dot(a, b) / denom)
 
 
+def yaw_ratio(face):
+    """Position du nez entre les yeux, normalisée par l'écart des yeux (≈0 de face)."""
+    right_eye_x, left_eye_x, nose_x = float(face[4]), float(face[6]), float(face[8])
+    span = abs(left_eye_x - right_eye_x)
+    if span < 1.0:
+        return 0.0
+    return (nose_x - (right_eye_x + left_eye_x) / 2.0) / span
+
+
+def liveness_ok(yaws, min_range):
+    """Vrai si la tête a bougé d'au moins `min_range` de lacet pendant la capture."""
+    return len(yaws) >= 2 and (max(yaws) - min(yaws)) >= min_range
+
+
 def load_embeddings():
     if not config.EMBEDDINGS_PATH.exists():
         return None

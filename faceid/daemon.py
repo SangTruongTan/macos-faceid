@@ -19,7 +19,7 @@ import ctypes
 import cv2
 
 from . import config
-from .recognizer import FaceEngine, load_embeddings, best_match
+from .recognizer import FaceEngine, load_embeddings, best_match, yaw_ratio, liveness_ok
 
 _libc = ctypes.CDLL(None, use_errno=True)
 
@@ -212,12 +212,13 @@ class Daemon:
         # Écran verrouillé : pas de modal, visage direct, budget court.
         # Le HUD (Dynamic Island) est affiché comme sur sudo.
         hud, cancelled = self._hud_start(lock_screen=True)
-        ok, reason = self._verify_face_camera(timeout=config.LOCK_TIMEOUT_S,
-                                              cancelled=cancelled)
+        ok, reason = self._verify_face_camera(timeout=config.lock_timeout(),
+                                              cancelled=cancelled,
+                                              liveness=config.LOCK_LIVENESS)
         self._hud_finish(hud, ok)
         return ok, f"[lock] {reason}"
 
-    def _verify_face_camera(self, timeout=None, cancelled=None):
+    def _verify_face_camera(self, timeout=None, cancelled=None, liveness=False):
         self._maybe_reload()
         if self.enrolled is None or len(self.enrolled) == 0:
             return False, "no-enrollment"
@@ -236,6 +237,7 @@ class Daemon:
         _adaptive_warmup(cap)
 
         matches = 0
+        yaws = []
         frames = 0
         faces_seen = 0
         best_overall = -1.0
@@ -262,7 +264,7 @@ class Daemon:
                 b = float(frame.mean())
                 if b > max_bright:
                     max_bright = b
-                feat, _ = self.engine.frame_feature(frame)
+                feat, face = self.engine.frame_feature(frame)
                 if feat is None:
                     continue
                 faces_seen += 1
@@ -270,7 +272,11 @@ class Daemon:
                 best_overall = max(best_overall, score)
                 if score >= config.COSINE_THRESHOLD:
                     matches += 1
-                    if matches >= config.VERIFY_REQUIRED_MATCHES:
+                    if face is not None:
+                        yaws.append(yaw_ratio(face))
+                    if (matches >= config.VERIFY_REQUIRED_MATCHES
+                            and (not liveness or liveness_ok(
+                                yaws, config.LOCK_LIVENESS_YAW_RANGE))):
                         dt = time.time() - t0
                         return True, (f"score={score:.3f} frames={frames} "
                                       f"faces={faces_seen} bright={max_bright:.0f} "
@@ -285,7 +291,9 @@ class Daemon:
         dt = time.time() - t0
         return False, (f"best={best_overall:.3f} frames={frames} "
                        f"faces={faces_seen} bright={max_bright:.0f} t={dt:.1f}s"
-                       + (" no-face" if gave_up else ""))
+                       + (" no-face" if gave_up else "")
+                       + (f" no-liveness yaw={max(yaws) - min(yaws):.2f}"
+                          if liveness and matches and yaws else ""))
 
     # ---- Touch ID (helper Swift) ----
     def verify_touch(self):

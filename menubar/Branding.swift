@@ -167,6 +167,7 @@ enum Run {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = args
+        if !Paths.bundled { p.currentDirectoryURL = URL(fileURLWithPath: Paths.root) }
         var e = ProcessInfo.processInfo.environment
         e.merge(Paths.childEnv) { _, n in n }
         e.merge(env) { _, n in n }

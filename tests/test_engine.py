@@ -324,8 +324,26 @@ def test_socket():
             proc.kill()
 
 
+def test_liveness():
+    print("liveness (écran verrouillé)")
+    import numpy as np
+    from faceid.recognizer import liveness_ok, yaw_ratio
+
+    def face(nose_x):
+        f = np.zeros(15, dtype=np.float32)
+        f[4], f[6], f[8] = 100.0, 160.0, nose_x
+        return f
+
+    check("de face le lacet est nul", abs(yaw_ratio(face(130.0))) < 1e-6)
+    still = [yaw_ratio(face(130.0 + d)) for d in (0.0, 0.5, -0.5)]
+    check("une photo immobile est refusée", not liveness_ok(still, 0.15))
+    turn = [yaw_ratio(face(x)) for x in (130.0, 136.0, 142.0)]
+    check("une rotation de tête est acceptée", liveness_ok(turn, 0.15))
+    check("une seule frame ne suffit pas", not liveness_ok([0.0], 0.15))
+
+
 def main():
-    for test in (test_warmup, test_verify_client_mode, test_cancel, test_no_face_abort,
+    for test in (test_liveness, test_warmup, test_verify_client_mode, test_cancel, test_no_face_abort,
                  test_present_face_is_never_cut_short,
                  test_enroll_is_bounded, test_append,
                  test_flags, test_i18n, test_socket):

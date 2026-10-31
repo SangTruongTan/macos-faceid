@@ -135,6 +135,12 @@ VERIFY_TIMEOUT_S = float(os.environ.get("FACEID_TIMEOUT", "8.0"))
 # Écran verrouillé : budget plus court (< timeout du module PAM = 6 s) pour
 # basculer vite sur le mot de passe si besoin.
 LOCK_TIMEOUT_S = float(os.environ.get("FACEID_LOCK_TIMEOUT", "5.0"))
+# Écran verrouillé (optionnel, FACEID_LOCK_LIVENESS=1) : un visage immobile (photo, écran) ne suffit pas. L'utilisateur doit
+# tourner légèrement la tête ; l'amplitude de lacet (nez / écart des yeux) mesurée sur
+# les frames reconnues doit dépasser LOCK_LIVENESS_YAW_RANGE. Budget plus long en conséquence.
+LOCK_LIVENESS = os.environ.get("FACEID_LOCK_LIVENESS", "0") == "1"
+LOCK_LIVENESS_YAW_RANGE = float(os.environ.get("FACEID_LOCK_YAW_RANGE", "0.15"))
+LOCK_LIVENESS_TIMEOUT_S = float(os.environ.get("FACEID_LOCK_LIVENESS_TIMEOUT", "10.0"))
 # Abandon anticipé quand l'objectif ne voit personne. La boucle consommait tout son
 # budget même sans avoir détecté le moindre visage : un `sudo` lancé sans regarder la
 # caméra — le cas courant quand on tape une commande — coûtait un cœur saturé pendant
@@ -181,3 +187,7 @@ def _resolve_camera_index():
 
 
 CAMERA_INDEX = _resolve_camera_index()
+
+
+def lock_timeout():
+    return LOCK_LIVENESS_TIMEOUT_S if LOCK_LIVENESS else LOCK_TIMEOUT_S

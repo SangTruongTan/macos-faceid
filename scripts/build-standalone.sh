@@ -15,6 +15,9 @@ BUNDLE_ID="com.lorenzo.Mugshot"
 MARKETING_VERSION="${MARKETING_VERSION:-1.0}"   # ex: 1.0.1 (surchargé par release.sh)
 BUILD_VERSION="${BUILD_VERSION:-1}"             # entier monotone (Sparkle compare ceci)
 MODELS="${FACEID_MODELS_DIR:-$HOME/Library/Application Support/faceid/models}"
+# Local builds must not be replaced by the official release through Sparkle.
+# build-release.sh sets MUGSHOT_UPDATE_CHECKS=true.
+MUGSHOT_UPDATE_CHECKS="${MUGSHOT_UPDATE_CHECKS:-false}"
 python3 "$HERE/scripts/local-signing.py" init
 
 echo "══ 1/6  Prérequis (modèles, helpers, module PAM, assets, i18n) ══"
@@ -91,7 +94,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key>  <string>${MACOSX_DEPLOYMENT_TARGET}</string>
   <key>SUFeedURL</key>               <string>https://raw.githubusercontent.com/Lorenzo-Coslado/macos-faceid/main/appcast.xml</string>
   <key>SUPublicEDKey</key>           <string>MYs0iwYg/b5lDERYBHVBBiIw8R2awqExOluwOfZlp0w=</string>
-  <key>SUEnableAutomaticChecks</key> <true/>
+  <key>SUEnableAutomaticChecks</key> <${MUGSHOT_UPDATE_CHECKS:-false}/>
   <key>NSCameraUsageDescription</key>
   <string>Reconnaissance faciale locale pour sudo et le déverrouillage de l’écran.</string>
 </dict>

@@ -6,7 +6,8 @@
 #   scripts/dev-install.sh               construit le paquet et l'installe (sudo installer)
 #   scripts/dev-install.sh build         construit le paquet seulement
 #   scripts/dev-install.sh release X.Y.Z construit puis publie build/Mugshot-X.Y.Z.pkg
-#                                        sur la release vX.Y.Z du dépôt `origin`
+#                                        sur la release vX.Y.Z du dépôt `origin`, avec
+#                                        les notes de release-notes/X.Y.Z.md (en anglais)
 #
 # Les mises à jour automatiques (Sparkle) sont coupées : elles remplaceraient ce build
 # par la version officielle et réinitialiseraient les autorisations macOS.
@@ -41,9 +42,10 @@ case "$MODE" in
     open -a Mugshot
     ;;
   release)
+    NOTES="release-notes/$VERSION.md"
+    [ -f "$NOTES" ] || { echo "notes de version manquantes : $NOTES" >&2; exit 1; }
     gh release create "v$VERSION" "$PKG" --repo "$(git remote get-url origin)" \
-      --title "Mugshot $VERSION (perso)" \
-      --notes "Build local non notarisé, mises à jour automatiques désactivées. Sur un autre Mac : retirer la quarantaine (\`xattr -d com.apple.quarantine Mugshot-$VERSION.pkg\`) puis \`sudo installer -pkg Mugshot-$VERSION.pkg -target /\`."
+      --title "Mugshot $VERSION" --notes-file "$NOTES"
     ;;
   *) echo "mode inconnu : $MODE" >&2; exit 1 ;;
 esac

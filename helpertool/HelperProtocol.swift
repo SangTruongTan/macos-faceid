@@ -18,8 +18,21 @@ public protocol MugshotHelperProtocol {
     /// survenu au milieu de l'installation, donc après avoir laissé croire que ça
     /// marchait. Ne modifie rien.
     func checkAccess(withReply reply: @escaping (Bool, String) -> Void)
+    /// Lit les claviers pendant que l'écran est verrouillé : seul un process root reçoit
+    /// ces touches. Le helper ne renvoie que « touche de déclenchement » ou « autre
+    /// touche » via MugshotKeyEventsProtocol, jamais la touche elle-même. S'arrête quand
+    /// la connexion se ferme.
+    func startKeyWatch(trigger: Int, withReply reply: @escaping (Bool, String) -> Void)
+    func stopKeyWatch(withReply reply: @escaping (Bool, String) -> Void)
+}
+
+/// Objet exporté par l'app, appelé par le helper.
+@objc(MugshotKeyEventsProtocol)
+public protocol MugshotKeyEventsProtocol {
+    /// true : la touche de déclenchement ; false : toute autre touche (mot de passe saisi à la main).
+    func keyDecision(isTrigger: Bool)
 }
 
 /// Nom du service mach + label du daemon (partagé app/helper).
 public let kMugshotHelperMachService = "com.lorenzo.Mugshot.Helper"
-public let kMugshotHelperVersion = "2"
+public let kMugshotHelperVersion = "3"

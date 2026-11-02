@@ -6,7 +6,7 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 cd "$HERE"
 swiftc -swift-version 5 -module-cache-path "$STAGE/cache" \
-  menubar/LockScreenUnlockCoordinator.swift tests/lock_screen_permissions.swift \
+  menubar/LockScreenUnlockCoordinator.swift helpertool/KeyWatcher.swift tests/lock_screen_permissions.swift \
   -framework AppKit -framework ApplicationServices -o "$STAGE/permissions"
 "$STAGE/permissions"
 swiftc -swift-version 5 -module-cache-path "$STAGE/cache" \

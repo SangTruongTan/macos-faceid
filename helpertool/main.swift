@@ -30,7 +30,8 @@ final class HelperDelegate: NSObject, NSXPCListenerDelegate, MugshotHelperProtoc
     private func resetIdle() {
         idleQueue.async {
             self.idleWork?.cancel()
-            let w = DispatchWorkItem { exit(0) }
+            // Jamais d'arrêt pendant une surveillance du clavier.
+            let w = DispatchWorkItem { DispatchQueue.main.async { if self.watcher == nil { exit(0) } } }
             self.idleWork = w
             self.idleQueue.asyncAfter(deadline: .now() + 20, execute: w)
         }
@@ -43,6 +44,10 @@ final class HelperDelegate: NSObject, NSXPCListenerDelegate, MugshotHelperProtoc
         }
         c.exportedInterface = NSXPCInterface(with: MugshotHelperProtocol.self)
         c.exportedObject = self
+        c.remoteObjectInterface = NSXPCInterface(with: MugshotKeyEventsProtocol.self)
+        let end = { [weak self] in DispatchQueue.main.async { self?.endWatch(for: c) } }
+        c.invalidationHandler = end
+        c.interruptionHandler = end
         c.resume()
         resetIdle()
         return true
@@ -69,6 +74,54 @@ final class HelperDelegate: NSObject, NSXPCListenerDelegate, MugshotHelperProtoc
     func disableSudo(withReply reply: @escaping (Bool, String) -> Void) {
         runScript("pam-uninstall-root.sh", reply: reply)
     }
+    // MARK: surveillance du clavier (écran verrouillé)
+    // Toujours sur le thread principal : les périphériques HID y sont planifiés.
+    private var watcher: KeyWatcher?
+    private var watchConnection: NSXPCConnection?
+    private var watchTimeout: DispatchWorkItem?
+    // Plus long que le délai d'armement maximal de l'app (2 h).
+    private static let watchLimit: TimeInterval = 7500
+
+    func startKeyWatch(trigger: Int, withReply reply: @escaping (Bool, String) -> Void) {
+        guard let connection = NSXPCConnection.current() else { reply(false, "no connection"); return }
+        DispatchQueue.main.async {
+            self.endWatch(for: nil)
+            let events = connection.remoteObjectProxy as? MugshotKeyEventsProtocol
+            let watcher = KeyWatcher(triggerUsage: UInt32(truncatingIfNeeded: trigger)) { decision in
+                events?.keyDecision(isTrigger: decision == .trigger)
+            }
+            watcher.start()
+            self.watcher = watcher
+            self.watchConnection = connection
+            let timeout = DispatchWorkItem { [weak self] in self?.endWatch(for: nil) }
+            self.watchTimeout = timeout
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.watchLimit, execute: timeout)
+            // Devices attach asynchronously; report once they had time to open.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                reply(true, "input monitoring=\(watcher.listenAccess) keyboards opened=\(watcher.openedDevices) refused=\(watcher.failedOpens)")
+            }
+        }
+    }
+
+    func stopKeyWatch(withReply reply: @escaping (Bool, String) -> Void) {
+        DispatchQueue.main.async {
+            let events = self.watcher?.rawEvents ?? 0
+            self.endWatch(for: nil)
+            reply(true, "raw events=\(events)")
+        }
+    }
+
+    /// `connection` nil : arrêt inconditionnel ; sinon seulement si c'est elle qui surveille.
+    private func endWatch(for connection: NSXPCConnection?) {
+        if let connection, connection !== watchConnection { return }
+        watcher?.stop()
+        watcher = nil
+        watchConnection = nil
+        watchTimeout?.cancel()
+        watchTimeout = nil
+        resetIdle()
+    }
+
     func version(withReply reply: @escaping (String) -> Void) {
         reply(kMugshotHelperVersion)
     }

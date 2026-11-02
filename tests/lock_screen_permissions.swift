@@ -13,6 +13,12 @@ final class Settings {
     var screenUnlockEnabled = false
     var env: [String: String] { [:] }
 }
+final class HelperManager {
+    static let shared = HelperManager()
+    func registerQuietly() {}
+    func startKeyWatch(trigger: Int, decision: @escaping (Bool) -> Void, done: @escaping (Bool, String) -> Void) {}
+    func stopKeyWatch() {}
+}
 enum Status { static var enrolled: Bool { false } }
 enum LoginPasswordStore {
     static var isConfigured: Bool { false }

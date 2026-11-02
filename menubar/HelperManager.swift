@@ -5,6 +5,7 @@ import Foundation
 import ServiceManagement
 import AppKit
 import Security
+import os
 
 final class HelperManager {
     static let shared = HelperManager()
@@ -123,9 +124,13 @@ final class HelperManager {
         return "cdhash H\"\(cdhash.map { String(format: "%02x", $0) }.joined())\""
     }
 
-    private func newConnection() -> NSXPCConnection {
+    private func newConnection(exporting events: MugshotKeyEventsProtocol? = nil) -> NSXPCConnection {
         let c = NSXPCConnection(machServiceName: kMugshotHelperMachService, options: .privileged)
         c.remoteObjectInterface = NSXPCInterface(with: MugshotHelperProtocol.self)
+        if let events {
+            c.exportedInterface = NSXPCInterface(with: MugshotKeyEventsProtocol.self)
+            c.exportedObject = events
+        }
         if let requirement = helperCodeSigningRequirement() {
             c.setCodeSigningRequirement(requirement)
         } else {
@@ -158,6 +163,55 @@ final class HelperManager {
     /// Le helper a-t-il le droit d'écrire dans /etc/pam.d ? Ne modifie rien.
     func checkAccess(_ done: @escaping (Bool, String) -> Void) {
         call({ $0.checkAccess(withReply: $1) }, done)
+    }
+
+    // MARK: lock-screen key watch
+
+    private final class KeyEvents: NSObject, MugshotKeyEventsProtocol {
+        let handler: (Bool) -> Void
+        init(_ handler: @escaping (Bool) -> Void) { self.handler = handler }
+        func keyDecision(isTrigger: Bool) { DispatchQueue.main.async { self.handler(isTrigger) } }
+    }
+    private var watchConnection: NSXPCConnection?
+
+    private static let trace = Logger(subsystem: "com.lorenzo.Mugshot", category: "helper")
+    private static let approvalAskedKey = "faceid.helperApprovalAsked"
+
+    /// Registers the daemon at launch. The approval pane opens at most once, so a user who ignores
+    /// it is not nagged on every launch; the status is logged either way.
+    func registerQuietly() {
+        Self.trace.notice("helper status at launch: \(self.service.status.rawValue)")
+        guard service.status != .enabled else { return }
+        var registration = "ok"
+        if service.status != .requiresApproval {
+            do { try service.register() } catch { registration = error.localizedDescription }
+        }
+        Self.trace.notice("helper register: \(registration, privacy: .public); status=\(self.service.status.rawValue)")
+        let defaults = UserDefaults.standard
+        if service.status == .requiresApproval, !defaults.bool(forKey: Self.approvalAskedKey) {
+            defaults.set(true, forKey: Self.approvalAskedKey)
+            openApproval()
+        }
+    }
+
+    /// Asks the root daemon to read the keyboards while the screen is locked. The connection stays
+    /// open for the whole lock: closing it (or the app quitting) stops the daemon's watch.
+    /// `decision` runs on the main thread: true for the trigger key, false for any other key.
+    func startKeyWatch(trigger: Int, decision: @escaping (Bool) -> Void, done: @escaping (Bool, String) -> Void) {
+        stopKeyWatch()
+        guard isEnabled else { done(false, "helper not enabled (status \(service.status.rawValue))"); return }
+        let c = newConnection(exporting: KeyEvents(decision))
+        watchConnection = c
+        let proxy = c.remoteObjectProxyWithErrorHandler { err in
+            DispatchQueue.main.async { done(false, "helper connection: \(err.localizedDescription)") }
+        } as? MugshotHelperProtocol
+        guard let proxy else { done(false, "XPC proxy unavailable"); return }
+        proxy.startKeyWatch(trigger: trigger) { ok, message in DispatchQueue.main.async { done(ok, message) } }
+    }
+
+    func stopKeyWatch() {
+        watchConnection?.invalidate()
+        watchConnection = nil
     }
 
     /// Exécute une opération privilégiée en s'assurant d'abord que le helper existe.

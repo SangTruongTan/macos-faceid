@@ -63,14 +63,14 @@ mkdir -p "$APP/Contents/MacOS" "$RES"
 swiftc -O -swift-version 5 -target "$MUGSHOT_SWIFT_TARGET" -o "$APP/Contents/MacOS/Mugshot" \
   menubar/Branding.swift menubar/Onboarding.swift menubar/EnrollmentStream.swift menubar/SettingsView.swift menubar/SetupFlow.swift menubar/SetupSheet.swift menubar/Uninstaller.swift \
   menubar/HelperManager.swift menubar/LoginPasswordStore.swift menubar/LockScreenUnlockCoordinator.swift menubar/LockScreenSetup.swift \
-  helpertool/HelperProtocol.swift menubar/FaceIDApp.swift \
+  helpertool/HelperProtocol.swift helpertool/KeyWatcher.swift menubar/FaceIDApp.swift \
   -framework AppKit -framework SwiftUI -framework AVFoundation -framework ServiceManagement -framework Security \
   -framework ApplicationServices -framework OpenDirectory \
   -F "$HERE/vendor/sparkle" -framework Sparkle \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks
 # daemon privilégié root (SMAppService + XPC)
 swiftc -O -swift-version 5 -target "$MUGSHOT_SWIFT_TARGET" -o "$APP/Contents/MacOS/MugshotHelper" \
-  helpertool/main.swift helpertool/HelperProtocol.swift helpertool/CodesignCheck.swift \
+  helpertool/main.swift helpertool/HelperProtocol.swift helpertool/CodesignCheck.swift helpertool/KeyWatcher.swift \
   -framework Foundation -framework Security
 
 echo "══ 4/6  Info.plist ══"

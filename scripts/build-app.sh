@@ -108,6 +108,7 @@ swiftc -O -swift-version 5 \
   "$HERE/menubar/LockScreenUnlockCoordinator.swift" \
   "$HERE/menubar/LockScreenSetup.swift" \
   "$HERE/helpertool/HelperProtocol.swift" \
+  "$HERE/helpertool/KeyWatcher.swift" \
   "$HERE/menubar/FaceIDApp.swift" \
   -framework AppKit -framework SwiftUI -framework AVFoundation -framework ServiceManagement -framework Security \
   -framework ApplicationServices -framework OpenDirectory \
@@ -121,6 +122,7 @@ swiftc -O -swift-version 5 \
   "$HERE/helpertool/main.swift" \
   "$HERE/helpertool/HelperProtocol.swift" \
   "$HERE/helpertool/CodesignCheck.swift" \
+  "$HERE/helpertool/KeyWatcher.swift" \
   -framework Foundation -framework Security
 
 echo "== Scripts exécutables =="

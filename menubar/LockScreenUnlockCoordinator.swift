@@ -90,14 +90,7 @@ final class LockScreenUnlockCoordinator {
     private var generation: UInt64 = 0
     private var isLocked = false
     private var isAttempting = false
-    private var hidManager: IOHIDManager?
-    private var modifiersDown = Set<UInt32>()
-    private var lastKey: (usage: UInt32, at: Date)?
-    // One physical press can reach the callback through several HID elements.
-    private static let keyDebounce: TimeInterval = 0.04
-    private var lockedAt = Date.distantPast
-    // Keys still in flight from the lock shortcut (Ctrl+Cmd+Q) must not disarm the unlock.
-    private static let lockShortcutSettle: TimeInterval = 0.4
+    private var keyWatcher: KeyWatcher?
     // One chance per lock session: any other key, or a used attempt, disarms until the next lock.
     private var isArmed = false
     static let triggerKeyDefaultsKey = "lockUnlockKeyUsage"
@@ -125,14 +118,12 @@ final class LockScreenUnlockCoordinator {
             ? defaultArmTimeout : defaults.double(forKey: armTimeoutDefaultsKey)
         return min(max(value, armTimeoutRange.lowerBound), armTimeoutRange.upperBound)
     }
-    // Left/right Control and Command: shortcuts such as Ctrl+Cmd+Q are not password typing.
-    private static let shortcutModifierUsages: Set<UInt32> = [0xE0, 0xE3, 0xE4, 0xE7]
-
     func start() {
         // Ask for Input Monitoring now, in the user session: a prompt cannot appear on the lock screen.
         if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeUnknown {
             IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
         }
+        HelperManager.shared.registerQuietly()
         let distributed = DistributedNotificationCenter.default()
         distributed.addObserver(
             self,
@@ -156,73 +147,45 @@ final class LockScreenUnlockCoordinator {
         stopKeyWatch()
     }
 
-    // The configured trigger key (Backspace by default) on the lock screen requests an unlock. The password field
-    // takes secure event input, which hides later keystrokes from NSEvent monitors and event
-    // taps, so the keyboard is read at the HID level (Input Monitoring permission).
+    // The configured trigger key (Backspace by default) on the lock screen requests an unlock. The password
+    // field takes secure event input and macOS hides the lock screen's keystrokes from user processes
+    // (event taps and HID alike), so the root helper reads the keyboards and reports decisions only.
+    // The user-level watcher stays as a fallback for systems where it still receives keys.
     private func startKeyWatch() {
         stopKeyWatch()
-        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        IOHIDManagerSetDeviceMatching(manager, [
-            kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop,
-            kIOHIDDeviceUsageKey: kHIDUsage_GD_Keyboard,
-        ] as CFDictionary)
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        IOHIDManagerRegisterInputValueCallback(manager, { context, _, _, value in
-            guard let context else { return }
-            let element = IOHIDValueGetElement(value)
-            guard IOHIDElementGetUsagePage(element) == UInt32(kHIDPage_KeyboardOrKeypad) else { return }
-            let raw = IOHIDValueGetIntegerValue(value)
-            // Keyboards report keys either as one variable element per key (value 1/0) or as an
-            // array whose value is the key code (0 when released).
-            let isArray = IOHIDElementIsArray(element)
-            let usage = isArray ? UInt32(truncatingIfNeeded: raw) : IOHIDElementGetUsage(element)
-            let pressed = raw != 0
-            let coordinator = Unmanaged<LockScreenUnlockCoordinator>.fromOpaque(context).takeUnretainedValue()
-            DispatchQueue.main.async { coordinator.handleHIDKey(usage: usage, pressed: pressed) }
-        }, context)
-        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
-        IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
-        hidManager = manager
+        let trigger = Self.triggerUsage
+        let watcher = KeyWatcher(triggerUsage: trigger) { [weak self] decision in
+            self?.handle(trigger: decision == .trigger, source: "user")
+        }
+        watcher.start()
+        keyWatcher = watcher
+        HelperManager.shared.startKeyWatch(
+            trigger: Int(trigger),
+            decision: { [weak self] isTrigger in self?.handle(trigger: isTrigger, source: "helper") },
+            done: { ok, message in Self.trace.notice("helper key watch ok=\(ok): \(message, privacy: .public)") }
+        )
     }
 
-    private func handleHIDKey(usage: UInt32, pressed: Bool) {
-        // 0xE0...0xE7 are modifiers; 0x00...0x03 are rollover/error markers.
-        if usage >= 0xE0 && usage <= 0xE7 {
-            if pressed { modifiersDown.insert(usage) } else { modifiersDown.remove(usage) }
-            return
-        }
-        guard pressed, usage > 0x03, usage < 0xE0 || usage > 0xE7 else { return }
-        let stamp = Date()
-        if let lastKey, lastKey.usage == usage, stamp.timeIntervalSince(lastKey.at) < Self.keyDebounce { return }
-        lastKey = (usage, stamp)
+    private func handle(trigger: Bool, source: String) {
         guard isLocked, isArmed else {
-            Self.trace.notice("key ignored: locked=\(self.isLocked) armed=\(self.isArmed)")
+            Self.trace.notice("key ignored (\(source, privacy: .public)): locked=\(self.isLocked) armed=\(self.isArmed)")
             return
         }
-        if !modifiersDown.isDisjoint(with: Self.shortcutModifierUsages)
-            || Date().timeIntervalSince(lockedAt) < Self.lockShortcutSettle {
-            Self.trace.notice("key ignored: shortcut modifier or lock settle")
-            return
-        }
-        guard usage == Self.triggerUsage else {
+        guard trigger else {
             isArmed = false   // the user is typing the password by hand
-            Self.trace.notice("other key: disarmed")
+            Self.trace.notice("other key (\(source, privacy: .public)): disarmed")
             return
         }
         isArmed = false
-        Self.trace.notice("trigger key: requesting unlock")
+        Self.trace.notice("trigger key (\(source, privacy: .public)): requesting unlock")
         requestUnlock()
     }
 
     private func stopKeyWatch() {
         isArmed = false
-        modifiersDown.removeAll()
-        lastKey = nil
-        if let hidManager {
-            IOHIDManagerUnscheduleFromRunLoop(hidManager, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
-            IOHIDManagerClose(hidManager, IOOptionBits(kIOHIDOptionsTypeNone))
-        }
-        hidManager = nil
+        keyWatcher?.stop()
+        keyWatcher = nil
+        HelperManager.shared.stopKeyWatch()
     }
 
     private func requestUnlock() {
@@ -235,7 +198,6 @@ final class LockScreenUnlockCoordinator {
         DispatchQueue.main.async {
             Self.trace.notice("screen locked; hidAccess=\(IOHIDCheckAccess(kIOHIDRequestTypeListenEvent).rawValue)")
             self.isLocked = true
-            self.lockedAt = Date()
             self.generation &+= 1
             self.isAttempting = false
             self.startKeyWatch()
@@ -251,7 +213,7 @@ final class LockScreenUnlockCoordinator {
 
     @objc private func receivedScreenUnlocked() {
         DispatchQueue.main.async {
-            Self.trace.notice("screen unlocked")
+            Self.trace.notice("screen unlocked; user-level raw hid events=\(self.keyWatcher?.rawEvents ?? 0)")
             self.isLocked = false
             self.generation &+= 1
             self.isAttempting = false

@@ -22,6 +22,12 @@ if [ "$MODE" = "release" ]; then
   VERSION="${2:?usage: dev-install.sh release X.Y.Z}"
   export MARKETING_VERSION="$VERSION"
 fi
+# Sans version explicite, un build local reprend la plus récente des notes de version :
+# build-standalone.sh retomberait sur 1.0, un « downgrade » pour l'installeur.
+if [ -z "${MARKETING_VERSION:-}" ]; then
+  LATEST="$(ls release-notes/*.md 2>/dev/null | sed 's|.*/||; s|\.md$||' | sort -V | tail -1)"
+  [ -z "$LATEST" ] || export MARKETING_VERSION="$LATEST"
+fi
 # Sparkle compare ce nombre ; il reste monotone sans dépendre de la version affichée.
 export BUILD_VERSION="${BUILD_VERSION:-$(date +%y%m%d%H%M)}"
 export MUGSHOT_UPDATE_CHECKS="${MUGSHOT_UPDATE_CHECKS:-false}"
